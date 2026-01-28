@@ -1,0 +1,66 @@
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: taskmaster-db
+    environment:
+      POSTGRES_USER: taskmaster
+      POSTGRES_PASSWORD: taskmaster_password
+      POSTGRES_DB: taskmaster
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskmaster"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - taskmaster-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: taskmaster-backend
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://taskmaster:taskmaster_password@postgres:5432/taskmaster
+      JWT_SECRET: your_super_secret_jwt_key_here_change_in_production
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+    networks:
+      - taskmaster-network
+    command: sh -c "npm run prisma:migrate:prod && npm run seed && npm run dev"
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: taskmaster-frontend
+    environment:
+      VITE_API_URL: http://localhost:5000/api
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - taskmaster-network
+
+volumes:
+  postgres_data:
+
+networks:
+  taskmaster-network:
+    driver: bridge
